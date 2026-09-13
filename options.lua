@@ -1,4 +1,4 @@
-local L = AceLibrary("AceLocale-2.2"):new("NotGrid")
+local L = NotGridLocale
 
 local DefaultOptions = {
 	["minimapAngle"] = 180, -- 按钮位置
@@ -132,62 +132,14 @@ local DefaultOptions = {
 }
 
 function NotGrid:ResetDefaultOptions()
-	NotGridOptions = {}
 	NotGridOptions = DefaultOptions
 	ReloadUI()
 end
 
-function NotGrid:SetDefaultOptions() -- this will run on initialization and make sure everything is set. We can also use it if we wipe the NotGridOptions table and want to load it up with defaults
-	for key,value in pairs(DefaultOptions) do
-		if not NotGridOptions[key] and not (not NotGridOptions[key] and type(NotGridOptions[key]) == "boolean") then -- if this wasn't set from the saved variable load
-			NotGridOptions[key] = value
-		end
-	end
-	--if the current version is older than a commit that caused a config change, then set the affected configs back to default
-	if NotGridOptions.version < 1.112 and type(NotGridOptions.trackingicon1) ~= "table" then -- means they're using old aura handling and we need strings to be tables
-		for i=1,8 do
-			NotGridOptions["trackingicon"..i] = DefaultOptions["trackingicon"..i]
-		end
-	end
-	if NotGridOptions.version < 1.106 and NotGridOptions.containerpoint ~= "CENTER" then -- means they used the old drag positioning and it will be set relative to TOPLEFT
-		NotGridOptions.containerpoint = DefaultOptions.containerpoint
-		NotGridOptions.containeroffx = DefaultOptions.containeroffx
-		NotGridOptions.containeroffy = DefaultOptions.containeroffy
-	end
-	if NotGridOptions.version < 1.104 and type(NotGridOptions.unithealthorientation) ~= "number" then -- means they used the old editbox config and it will be set as "VERTICAL"/"HORIZONTAL"
-		NotGridOptions.unithealthorientation = DefaultOptions.unithealthorientation
-	end
-	NotGridOptions.version = DefaultOptions.version --update the version
-	
-	-- 加载手动设置的角色
-	-- if NotGridOptions.manualroles then
-	-- 	for name, role in pairs(NotGridOptions.manualroles) do
-	-- 		self.ManualRoles[name] = role
-	-- 	end
-	-- end
-	-- 关键段：过滤存档
-    if self.o.manualroles then
-        local stillInTeam = {}
-        -- 快速把当前所有队员名字收集到一个表
-        local currNames = {}
-        for i=1,GetNumRaidMembers() do
-            local n = GetRaidRosterInfo(i)
-            if n then currNames[n]=true end
-        end
-        for i=1,GetNumPartyMembers() do
-            currNames[UnitName("party"..i)]=true
-        end
-        currNames[UnitName("player")]=true
-
-        -- 只保留仍在队里的手动职责
-        for name,role in pairs(self.o.manualroles) do
-            if currNames[name] then
-                stillInTeam[name]=role
-            end
-        end
-        self.o.manualroles = stillInTeam
-        self.ManualRoles    = stillInTeam
-    end
+-- 不再有持久化存档，每次登录/重载都直接用 DefaultOptions 填充，
+-- 想改设置直接改上面的 DefaultOptions 表就行
+function NotGrid:SetDefaultOptions()
+	NotGridOptions = DefaultOptions
 end
 
 --------------------
@@ -211,6 +163,6 @@ function SlashCmdList.NOTGRID(msg, editbox)
 		NotGrid.o.colorunithealthbarbgbyclass = true
 		ReloadUI()
 	else
-		NotGridOptionsMenu:Show()
+		DEFAULT_CHAT_FRAME:AddMessage("NotGrid: 可用命令 /ng reset (恢复默认设置) 或 /ng grid (切换为Grid风格血条)")
 	end
 end

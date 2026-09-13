@@ -1,4 +1,4 @@
-local L = AceLibrary("AceLocale-2.2"):new("NotGrid")
+local L = NotGridLocale
 
 local spells40yd = { -- Macros are forced to have text associated with them so we can safely just check the textures as well as check against the presence of text. No need for Gratuity or Babble overhead. Though if they have an item in their bar that matches the texture then GG haha
 	["PALADIN"] = {"Interface\\Icons\\Spell_Holy_FlashHeal", "Interface\\Icons\\Spell_Holy_HolyBolt"},

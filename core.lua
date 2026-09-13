@@ -1,6 +1,249 @@
-local L = AceLibrary("AceLocale-2.2"):new("NotGrid")
-NotGrid = AceLibrary("AceAddon-2.0"):new("AceEvent-2.0")
-NotGridOptions = {} -- After the addon is fully initialized WoW will fill this up with its saved variables if any
+local L = NotGridLocale
+
+-- ============================================================
+-- NotGrid 主对象 + 原生事件/计时器系统（不再依赖 Ace2）
+-- ============================================================
+NotGrid = {}
+NotGrid._handlers = {} -- [eventName] = handlerNameOrFunc
+NotGrid._timers   = {} -- [timerName]  = {remaining=, interval=, repeating=, callback=}
+
+local NotGridFrame = CreateFrame("Frame")
+
+local function NotGrid_Dispatch(handler, ...)
+    if type(handler) == "function" then
+        return handler(NotGrid, ...)
+    elseif type(handler) == "string" then
+        local fn = NotGrid[handler]
+        if fn then return fn(NotGrid, ...) end
+    end
+end
+
+-- 真实游戏事件走 frame:RegisterEvent；自定义/虚拟事件(比如 RosterLib_RosterChanged)
+-- 注册会失败(不是合法的游戏事件名)，用 pcall 吞掉，当作只能靠 TriggerEvent 手动触发的虚拟事件
+function NotGrid:RegisterEvent(event, handler)
+    self._handlers[event] = handler or event
+    pcall(function() NotGridFrame:RegisterEvent(event) end)
+end
+
+function NotGrid:UnregisterEvent(event)
+    self._handlers[event] = nil
+    pcall(function() NotGridFrame:UnregisterEvent(event) end)
+end
+
+-- 虚拟事件：参数按普通 Lua 参数传给处理函数
+function NotGrid:TriggerEvent(event, ...)
+    local h = self._handlers[event]
+    if h then NotGrid_Dispatch(h, ...) end
+end
+
+-- 真实游戏事件：本服客户端的事件参数走全局变量 event/arg1..arg9 传递，
+-- 处理函数内部本来就是读这些全局变量，这里不需要转发任何参数
+NotGridFrame:SetScript("OnEvent", function()
+    local h = NotGrid._handlers[event]
+    if h then NotGrid_Dispatch(h) end
+end)
+
+-- 计时器：用一个 OnUpdate 驱动，替代 ScheduleEvent/ScheduleRepeatingEvent/CancelScheduledEvent
+NotGridFrame:SetScript("OnUpdate", function(_, elapsed)
+    for name, tm in pairs(NotGrid._timers) do
+        tm.remaining = tm.remaining - elapsed
+        if tm.remaining <= 0 then
+            if tm.repeating then
+                tm.remaining = tm.remaining + tm.interval
+                if tm.remaining <= 0 then tm.remaining = tm.interval end
+            else
+                NotGrid._timers[name] = nil
+            end
+            tm.callback()
+        end
+    end
+end)
+
+-- :ScheduleEvent(name, delay)              -- 到时触发同名虚拟事件
+-- :ScheduleEvent(name, callback, delay)    -- 到时调用 callback
+function NotGrid:ScheduleEvent(name, a, b)
+    local callback, delay
+    if type(a) == "function" then
+        callback, delay = a, b
+    else
+        delay = a
+        callback = function() NotGrid:TriggerEvent(name) end
+    end
+    self._timers[name] = { remaining = delay or 0, interval = delay or 0, repeating = false, callback = callback }
+end
+
+function NotGrid:ScheduleRepeatingEvent(name, a, b)
+    local callback, interval
+    if type(a) == "function" then
+        callback, interval = a, b
+    else
+        interval = a
+        callback = function() NotGrid:TriggerEvent(name) end
+    end
+    interval = interval or 1
+    self._timers[name] = { remaining = interval, interval = interval, repeating = true, callback = callback }
+end
+
+function NotGrid:CancelScheduledEvent(name)
+    self._timers[name] = nil
+end
+
+-- 生命周期：ADDON_LOADED(本插件) -> OnInitialize -> OnEnable
+-- (两个函数在下面才定义，但这里只是注册一个事件监听，真正调用要等 ADDON_LOADED 触发时，
+--  那时整个插件的所有文件早就加载完了，所以晚定义没关系)
+local NotGridLifecycle = CreateFrame("Frame")
+NotGridLifecycle:RegisterEvent("ADDON_LOADED")
+NotGridLifecycle:SetScript("OnEvent", function()
+    if event == "ADDON_LOADED" and arg1 == "NotGrid" then
+        if NotGrid.OnInitialize then NotGrid:OnInitialize() end
+        if NotGrid.OnEnable then NotGrid:OnEnable() end
+        NotGridLifecycle:UnregisterEvent("ADDON_LOADED")
+    end
+end)
+
+-- ============================================================
+-- RosterLib 替代：自己扫描花名册变化，触发 RosterLib_RosterChanged / RosterLib_UnitChanged
+-- ============================================================
+local NotGridRoster = { snapshot = {} }
+
+local ROSTER_UNITS = {}
+do
+    table.insert(ROSTER_UNITS, "player")
+    table.insert(ROSTER_UNITS, "pet")
+    for i = 1, 4 do
+        table.insert(ROSTER_UNITS, "party" .. i)
+        table.insert(ROSTER_UNITS, "partypet" .. i)
+    end
+    for i = 1, 40 do
+        table.insert(ROSTER_UNITS, "raid" .. i)
+    end
+end
+
+local function NotGridRoster_ReadUnit(unit)
+    if not UnitExists(unit) then return nil end
+    local name = UnitName(unit)
+    local _, classToken = UnitClass(unit)
+    local subgroup, rank = 1, 0
+
+    local raidIndex = tonumber(string.match(unit, "^raid(%d+)$"))
+    if raidIndex then
+        local _, r, sg = GetRaidRosterInfo(raidIndex)
+        rank = r or 0
+        subgroup = sg or 1
+    elseif unit == "player" then
+        rank = IsPartyLeader() and 2 or 0
+    elseif string.match(unit, "^party%d$") then
+        rank = UnitIsPartyLeader(unit) and 2 or 0
+    end
+
+    return { name = name, class = classToken, subgroup = subgroup, rank = rank }
+end
+
+function NotGridRoster:GetUnitIDFromName(name)
+    if not name then return nil end
+    for _, unit in ipairs(ROSTER_UNITS) do
+        local info = self.snapshot[unit]
+        if info and info.name == name then
+            return unit
+        end
+    end
+    -- 兜底：花名册缓存没命中时现场查一遍
+    for _, unit in ipairs(ROSTER_UNITS) do
+        if UnitExists(unit) and UnitName(unit) == name then
+            return unit
+        end
+    end
+    return nil
+end
+
+local NotGridRosterInitialized = false
+local function NotGridRoster_Scan(fireEvents)
+    local changedList = {}
+    for _, unit in ipairs(ROSTER_UNITS) do
+        local newInfo = NotGridRoster_ReadUnit(unit)
+        local oldInfo = NotGridRoster.snapshot[unit]
+
+        local isDifferent = false
+        if (newInfo == nil) ~= (oldInfo == nil) then
+            isDifferent = true
+        elseif newInfo and oldInfo then
+            if newInfo.name ~= oldInfo.name or newInfo.class ~= oldInfo.class
+                or newInfo.subgroup ~= oldInfo.subgroup or newInfo.rank ~= oldInfo.rank then
+                isDifferent = true
+            end
+        end
+
+        if isDifferent then
+            local entry = {
+                unitid      = newInfo and unit or nil,
+                name        = newInfo and newInfo.name or nil,
+                class       = newInfo and newInfo.class or nil,
+                subgroup    = newInfo and newInfo.subgroup or nil,
+                rank        = newInfo and newInfo.rank or nil,
+                oldname     = oldInfo and oldInfo.name or nil,
+                oldunitid   = oldInfo and unit or nil,
+                oldclass    = oldInfo and oldInfo.class or nil,
+                uldsubgroup = oldInfo and oldInfo.subgroup or nil,
+                oldrank     = oldInfo and oldInfo.rank or nil,
+            }
+            table.insert(changedList, entry)
+            NotGridRoster.snapshot[unit] = newInfo
+
+            if fireEvents then
+                NotGrid:TriggerEvent("RosterLib_UnitChanged",
+                    entry.unitid, entry.name, entry.class, entry.subgroup, entry.rank,
+                    entry.oldname, entry.oldunitid, entry.oldclass, entry.uldsubgroup, entry.oldrank)
+            end
+        end
+    end
+
+    if fireEvents and #changedList > 0 then
+        NotGrid:TriggerEvent("RosterLib_RosterChanged", changedList)
+    end
+end
+
+local NotGridRosterFrame = CreateFrame("Frame")
+NotGridRosterFrame:RegisterEvent("RAID_ROSTER_UPDATE")
+NotGridRosterFrame:RegisterEvent("PARTY_MEMBERS_CHANGED")
+NotGridRosterFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
+NotGridRosterFrame:SetScript("OnEvent", function()
+    if not NotGridRosterInitialized then
+        NotGridRoster_Scan(false) -- 第一次先静默建立基线，避免登录瞬间触发一堆虚假的"变化"
+        NotGridRosterInitialized = true
+    else
+        NotGridRoster_Scan(true)
+    end
+end)
+
+-- ============================================================
+-- Compost 替代：简单对象池(不做真正的对象复用，只保证接口语义正确)
+-- ============================================================
+local NotGridCompost = {}
+function NotGridCompost:Acquire(...)
+    local t = {}
+    local n = select('#', ...)
+    for i = 1, n do
+        t[i] = select(i, ...)
+    end
+    return t
+end
+function NotGridCompost:Reclaim(t)
+    if type(t) == "table" then
+        for k in pairs(t) do t[k] = nil end
+    end
+end
+
+-- ============================================================
+-- HealComm 替代（安全桩）：真正的跨玩家治疗预测需要全团队都用同一套通信协议
+-- 互相广播读条信息，这里没有实现那一套，只保证接口不报错——治疗预估条/文本
+-- 会一直是0，是刻意的功能降级，不是遗漏。以后想要真预测，需要单独做一套基于
+-- SendAddonMessage 的私服内部协议。
+-- ============================================================
+local NotGridHealComm = setmetatable({}, { __index = function() return function() end end })
+function NotGridHealComm:getHeal(name) return 0 end
+function NotGridHealComm:UnitisResurrecting(name) return false end
+
+NotGridOptions = {} -- 不持久化保存，每次登录都从 DefaultOptions 重新填充(见 options.lua)
 
 -- 职业角色图标纹理坐标（Tank/Healer/DPS）
 local ROLE_TEX_COORDS = {
@@ -72,10 +315,9 @@ function NotGrid:CanSetRole(unitid)
 end
 
 function NotGrid:OnInitialize()
-	self.HealComm = AceLibrary("HealComm-1.0")
-	self.Gratuity = AceLibrary("Gratuity-2.0") -- for aura handling
-	self.RosterLib = AceLibrary("RosterLib-2.0")
-	self.Compost = AceLibrary("Compost-2.0")
+	self.HealComm = NotGridHealComm
+	self.RosterLib = NotGridRoster
+	self.Compost = NotGridCompost
 	self.UnitFrames = {}
 	self.PartyIndexFrames = {}
 	self.ManualRoles = {} -- 手动设置的角色
@@ -152,9 +394,8 @@ function NotGrid:UpdateAllThreatBorders()
 end
 
 function NotGrid:OnEnable()
-	self.o = NotGridOptions -- Need to wait for addon to be fully initialized and saved variables loaded before I set this
-	self:SetDefaultOptions() -- if NotGridOptions is empty(no saved variables) this will fill it up with defaults
-	self:DoDropDown()
+	self:SetDefaultOptions() -- 不再有存档，直接用 DefaultOptions 填充 NotGridOptions
+	self.o = NotGridOptions
 	self:ConfigUnitFrames()
 	self:ConfigPartyIndexFrames()
 	--proximity stuff
@@ -196,9 +437,6 @@ function NotGrid:OnEnable()
 	
 	-- 初始化队伍状态
 	self.wasInParty = (GetNumPartyMembers() > 0) or (GetNumRaidMembers() > 0)
-
-	--ESC可以关闭设置界面
-	table.insert(UISpecialFrames, "NotGridOptionsMenu")	
 end
 
 -- 过滤逻辑：在获取Debuff时，根据玩家职业判断该Debuff类型是否可驱散：

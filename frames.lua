@@ -698,14 +698,10 @@ end
         this:UnlockHighlight()
     end)
     
-    -- 点击事件
+    -- 点击事件（设置菜单已移除，左键仅提示可用的斜杠命令）
     button:SetScript("OnClick", function()
         if arg1 == "LeftButton" then
-            if NotGridOptionsMenu:IsVisible() then
-                NotGridOptionsMenu:Hide()
-            else
-                NotGridOptionsMenu:Show()
-            end
+            DEFAULT_CHAT_FRAME:AddMessage("NotGrid: 可用命令 /ng reset (恢复默认设置) 或 /ng grid (切换为Grid风格血条)")
         elseif arg1 == "RightButton" then
             NotGrid:ToggleFrameShowHide()
         end

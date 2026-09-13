@@ -1,119 +1,130 @@
-local L = AceLibrary("AceLocale-2.2"):new("NotGrid")
+--[[
+    localization.lua —— 本地化文本
 
-L:RegisterTranslations("enUS", function()
-    return {
-        ["Dead"] = true,
-        ["Ghost"] = true,
-        ["Scroll Me!"] = true,
+    不再依赖 AceLocale-2.2。直接维护一个全局表 NotGridLocale，
+    enUS 作为基础(兜底)文本，如果客户端语言是 zhCN 就在其上覆盖成中文。
+    其它文件里用 `local L = NotGridLocale` 拿到同一份表即可。
+]]
 
-        ["Unit Width"] = true,
-        ["Unit Height"] = true,
-        ["Unit Border"] = true,
-        -- ["Unit Padding"] = true,
-        ["Space between left and right"] = true,
-        ["Space between top and bottom"] = true,
-        ["Font"] = true,
-        ["Texture"] = true,
-        ["Name Color"] = true,
-        ["Name Size"] = true,
-        ["Name Length"] = true,
-        ["Health Color"] = true,
-        ["Health Threshold"] = true,
-        ["Highlight Target"] = true,
-        ["Aggro Warning"] = true,
-        ["Mana Warning"] = true,
-        ["Healcomm Bar"] = true,
-        ["Healcomm Text"] = true,
-        ["Top Left Icon"] = true,
-        ["Top Icon"] = true,
-        ["Top Right Icon"] = true,
-        ["Right Icon"] = true,
-        ["Bottom Right Icon"] = true,
-        ["Bottom Icon"] = true,
-        ["Bottom Left Icon"] = true,
-        ["Left Icon"] = true,
-        ["Icon Size"] = true,
-        ["Proximity Leeway"] = true,
-        ["Use Map Proximity"] = true,
-        ["Smart Center"] = true,
-        -- ["Show the notgraid"] = true,
-        ["Show the party's index"] = true,
-        ["Show While Solo"] = true,
-        ["Show In Party"] = true,
-        ["Show Party In Raid"] = true,
-        ["Disable Tooltip In Combat"] = true,
-        ["Health Orientation"] = true,
-        ["Show Blizz Frames In Party"] = true,
-        ["Show Blizz Frames In Raid"] = true,
-        ["Growth Direction"] = true,
-        ["Show Power Bar"] = true,
-        ["Power Position"] = true,
-        ["Power Size"] = true,
-        ["Config Mode"] = true,
-        ["Background"] = true,
-        ["Show Pets"] = true,
-        ["Custom Pet Color"] = true,
-        ["TBC Shaman Color"] = true,
-        ["Proximity Rate"] = true,
-        ["Health Background"] = true,
-        ["Clique Hook"] = true,
-        ["Power Background"] = true,
-        ["Position"] = true,
-        ["Border Artwork"] = true,
-        ["Name Position"] = true,
-        ["Healcomm Text Position"] = true,
-        ["Version Checking"] = true,
-        ["Draggable"] = true,
+NotGridLocale = {}
+local L = NotGridLocale
+local clientLocale = GetLocale()
 
-        ["CombatEvents"] = {
-            ["CHAT_MSG_SPELL_PERIODIC_PARTY_BUFFS"] = "(%a+) gains %a.+", --%a on the last just to make sure its not a digit
-            ["CHAT_MSG_SPELL_PERIODIC_PARTY_DAMAGE"] = "(%a+) is afflicted by .+",
-            ["CHAT_MSG_SPELL_PERIODIC_FRIENDLYPLAYER_BUFFS"] = "(%a+) gains %a.+",
-            ["CHAT_MSG_SPELL_PERIODIC_FRIENDLYPLAYER_DAMAGE"] = "(%a+) is afflicted by .+",
+local enUS = {
+    ["Dead"] = true,
+    ["Ghost"] = true,
+    ["Scroll Me!"] = true,
 
-            ["CHAT_MSG_SPELL_PARTY_BUFF"] = "(%a+) begins .+", --I don't get this message for party members? Only friendly?
-            ["CHAT_MSG_SPELL_FRIENDLYPLAYER_BUFF"] = "(%a+) begins .+",
-            ["CHAT_MSG_SPELL_PARTY_DAMAGE"] = "(%a+) begins .+",
-            ["CHAT_MSG_SPELL_FRIENDLYPLAYER_DAMAGE"] = "(%a+) begins .+",
+    ["Unit Width"] = true,
+    ["Unit Height"] = true,
+    ["Unit Border"] = true,
+    -- ["Unit Padding"] = true,
+    ["Space between left and right"] = true,
+    ["Space between top and bottom"] = true,
+    ["Font"] = true,
+    ["Texture"] = true,
+    ["Name Color"] = true,
+    ["Name Size"] = true,
+    ["Name Length"] = true,
+    ["Health Color"] = true,
+    ["Health Threshold"] = true,
+    ["Highlight Target"] = true,
+    ["Aggro Warning"] = true,
+    ["Mana Warning"] = true,
+    ["Healcomm Bar"] = true,
+    ["Healcomm Text"] = true,
+    ["Top Left Icon"] = true,
+    ["Top Icon"] = true,
+    ["Top Right Icon"] = true,
+    ["Right Icon"] = true,
+    ["Bottom Right Icon"] = true,
+    ["Bottom Icon"] = true,
+    ["Bottom Left Icon"] = true,
+    ["Left Icon"] = true,
+    ["Icon Size"] = true,
+    ["Proximity Leeway"] = true,
+    ["Use Map Proximity"] = true,
+    ["Smart Center"] = true,
+    -- ["Show the notgraid"] = true,
+    ["Show the party's index"] = true,
+    ["Show While Solo"] = true,
+    ["Show In Party"] = true,
+    ["Show Party In Raid"] = true,
+    ["Disable Tooltip In Combat"] = true,
+    ["Health Orientation"] = true,
+    ["Show Blizz Frames In Party"] = true,
+    ["Show Blizz Frames In Raid"] = true,
+    ["Growth Direction"] = true,
+    ["Show Power Bar"] = true,
+    ["Power Position"] = true,
+    ["Power Size"] = true,
+    ["Config Mode"] = true,
+    ["Background"] = true,
+    ["Show Pets"] = true,
+    ["Custom Pet Color"] = true,
+    ["TBC Shaman Color"] = true,
+    ["Proximity Rate"] = true,
+    ["Health Background"] = true,
+    ["Clique Hook"] = true,
+    ["Power Background"] = true,
+    ["Position"] = true,
+    ["Border Artwork"] = true,
+    ["Name Position"] = true,
+    ["Healcomm Text Position"] = true,
+    ["Version Checking"] = true,
+    ["Draggable"] = true,
 
-            ["CHAT_MSG_SPELL_AURA_GONE_PARTY"] = ".+ fades from (%a+)%.",
-            ["CHAT_MSG_SPELL_AURA_GONE_OTHER"] = ".+ fades from (%a+)%.", -- will pick up hostile fades as well as freind, but I won't have them in rosterlib so whatevs
+    ["CombatEvents"] = {
+        ["CHAT_MSG_SPELL_PERIODIC_PARTY_BUFFS"] = "(%a+) gains %a.+", --%a on the last just to make sure its not a digit
+        ["CHAT_MSG_SPELL_PERIODIC_PARTY_DAMAGE"] = "(%a+) is afflicted by .+",
+        ["CHAT_MSG_SPELL_PERIODIC_FRIENDLYPLAYER_BUFFS"] = "(%a+) gains %a.+",
+        ["CHAT_MSG_SPELL_PERIODIC_FRIENDLYPLAYER_DAMAGE"] = "(%a+) is afflicted by .+",
 
-            ["CHAT_MSG_SPELL_SELF_BUFF"] = "Your .+ heals (%a+) for .+"
-        },
+        ["CHAT_MSG_SPELL_PARTY_BUFF"] = "(%a+) begins .+", --I don't get this message for party members? Only friendly?
+        ["CHAT_MSG_SPELL_FRIENDLYPLAYER_BUFF"] = "(%a+) begins .+",
+        ["CHAT_MSG_SPELL_PARTY_DAMAGE"] = "(%a+) begins .+",
+        ["CHAT_MSG_SPELL_FRIENDLYPLAYER_DAMAGE"] = "(%a+) begins .+",
 
-        --------------
-        -- Tooltips --
-        --------------
+        ["CHAT_MSG_SPELL_AURA_GONE_PARTY"] = ".+ fades from (%a+)%.",
+        ["CHAT_MSG_SPELL_AURA_GONE_OTHER"] = ".+ fades from (%a+)%.", -- will pick up hostile fades as well as freind, but I won't have them in rosterlib so whatevs
 
-        ["pet_tooltip"] = "Note: Prone to visual errors.",
-        ["classcolor_tooltip"] = "Toggle for class color.",
-        ["smartcenter_tooltip"] =
-        "As your group expands the frames stay horizontally centered on the original group placement.",
-        ["healththreshold_tooltip"] = "Health percentage before name is replaced with health deficit.",
-        ["manathreshhold_tooltip"] = "Mana percentage before border color changes.",
-        ["proximityleeway_tooltip"] = "Amount of seconds to be considered \"In Range\" after a positive confirmation.",
-        ["proximityrate_tooltip"] = "Amount of seconds between proximity checks.",
-        ["cliquehook_tooltip"] =
-        "Hooks the Clique spellcast function to use NG instead for proximity checking beyond 28 yards within instances. Toggling will reload UI.",
-        ["powercolor_tooltip"] = "Toggle for power color.",
-        ["position_tooltip"] = "Shift+Ctrl = 100\nShift = 10",
-        ["draggable_tooltip"] = "Note: Possible client crash bug\n           Smart Center disabled",
-        ["icon_tooltip"] = "Toggle to invert icon display.",
+        ["CHAT_MSG_SPELL_SELF_BUFF"] = "Your .+ heals (%a+) for .+"
+    },
 
-        --------------------------------------------------------
-        -- 以下为debuff魔法类型，在中文端也显示英文，请勿修改 --
-        --------------------------------------------------------
+    --------------
+    -- Tooltips --
+    --------------
 
-        ["Magic"] = true,
-        ["Poison"] = true,
-        ["Curse"] = true,
-        ["Disease"] = true,
-    }
-end)
+    ["pet_tooltip"] = "Note: Prone to visual errors.",
+    ["classcolor_tooltip"] = "Toggle for class color.",
+    ["smartcenter_tooltip"] =
+    "As your group expands the frames stay horizontally centered on the original group placement.",
+    ["healththreshold_tooltip"] = "Health percentage before name is replaced with health deficit.",
+    ["manathreshhold_tooltip"] = "Mana percentage before border color changes.",
+    ["proximityleeway_tooltip"] = "Amount of seconds to be considered \"In Range\" after a positive confirmation.",
+    ["proximityrate_tooltip"] = "Amount of seconds between proximity checks.",
+    ["cliquehook_tooltip"] =
+    "Hooks the Clique spellcast function to use NG instead for proximity checking beyond 28 yards within instances. Toggling will reload UI.",
+    ["powercolor_tooltip"] = "Toggle for power color.",
+    ["position_tooltip"] = "Shift+Ctrl = 100\nShift = 10",
+    ["draggable_tooltip"] = "Note: Possible client crash bug\n           Smart Center disabled",
+    ["icon_tooltip"] = "Toggle to invert icon display.",
 
-L:RegisterTranslations("zhCN", function()
-    return {
+    --------------------------------------------------------
+    -- 以下为debuff魔法类型，在中文端也显示英文，请勿修改 --
+    --------------------------------------------------------
+
+    ["Magic"] = true,
+    ["Poison"] = true,
+    ["Curse"] = true,
+    ["Disease"] = true,
+}
+for k, v in pairs(enUS) do
+    L[k] = v
+end
+
+if clientLocale == "zhCN" then
+    local zhCN = {
         ["Dead"] = "死亡",
         ["Ghost"] = "灵魂",
         ["Scroll Me!"] = "滚动我",
@@ -217,4 +228,7 @@ L:RegisterTranslations("zhCN", function()
         ["Curse"] = "诅咒",
         ["Disease"] = "疾病",
     }
-end)
+    for k, v in pairs(zhCN) do
+        L[k] = v
+    end
+end
