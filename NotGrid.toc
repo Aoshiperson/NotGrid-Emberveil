@@ -1,0 +1,15 @@
+## Interface: 11200
+## Title: NotGrid |cff7fff7f -Emberveil-|r
+## Notes: It's Not Grid
+## Title-zhCN: |CFFEE7600[团队]|R NotGrid |CFFFFD700团队血条框架
+## Notes-zhCN: |CFFFFFF00 NotGrid |R|N 美化团队血条框架|N|CFFFFFFFF命令：|R/ng 或 /notgrid
+## DefaultState: 
+## SavedVariablesPerCharacter: NotGridOptions
+compat.lua
+localization.lua
+core.lua
+frames.lua
+mapsizes.lua
+proximity.lua
+options.lua
+menus.lua
