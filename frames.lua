@@ -157,7 +157,11 @@ end
     f:RegisterForClicks("LeftButtonDown", "RightButtonDown", "MiddleButtonDown", "Button4Down", "Button5Down") -- somehow I recall this not matterign?
     f:RegisterForDrag("LeftButton")
     f:SetScript("OnClick", function()
-            self:ClickHandle(arg1)
+            -- 用 pcall 包一层，避免这里万一出问题直接把整个客户端带崩
+            local ok, err = pcall(function() self:ClickHandle(arg1) end)
+            if not ok then
+                DEFAULT_CHAT_FRAME:AddMessage("|cffff0000NotGrid点击处理出错:|r " .. tostring(err))
+            end
     end)
     f:SetScript("OnEnter", function()
         if UnitAffectingCombat("player") and self.o.disablemouseoverincombat then

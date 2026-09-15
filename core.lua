@@ -44,7 +44,10 @@ NotGridFrame:SetScript("OnEvent", function()
 end)
 
 -- 计时器：用一个 OnUpdate 驱动，替代 ScheduleEvent/ScheduleRepeatingEvent/CancelScheduledEvent
-NotGridFrame:SetScript("OnUpdate", function(_, elapsed)
+-- 注意：这个客户端的 OnUpdate 脚本读不到 (self, elapsed) 参数，跟 OnEvent 一样得走
+-- 全局变量 arg1 来拿距上一帧的时间间隔（1.12 时代的老式约定）
+NotGridFrame:SetScript("OnUpdate", function()
+    local elapsed = arg1
     for name, tm in pairs(NotGrid._timers) do
         tm.remaining = tm.remaining - elapsed
         if tm.remaining <= 0 then
@@ -156,7 +159,6 @@ function NotGridRoster:GetUnitIDFromName(name)
     return nil
 end
 
-local NotGridRosterInitialized = false
 local function NotGridRoster_Scan(fireEvents)
     local changedList = {}
     for _, unit in ipairs(ROSTER_UNITS) do
@@ -207,12 +209,9 @@ NotGridRosterFrame:RegisterEvent("RAID_ROSTER_UPDATE")
 NotGridRosterFrame:RegisterEvent("PARTY_MEMBERS_CHANGED")
 NotGridRosterFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
 NotGridRosterFrame:SetScript("OnEvent", function()
-    if not NotGridRosterInitialized then
-        NotGridRoster_Scan(false) -- 第一次先静默建立基线，避免登录瞬间触发一堆虚假的"变化"
-        NotGridRosterInitialized = true
-    else
-        NotGridRoster_Scan(true)
-    end
+    -- 每次都正常触发事件（包括登录后的第一次），这样玩家自己的血条/能量条
+    -- 才会在登录时就被填上初始值，而不是要等到下一次花名册变化才刷新
+    NotGridRoster_Scan(true)
 end)
 
 -- ============================================================
@@ -478,6 +477,7 @@ function NotGrid:UNIT_MAIN(unitid)
 	end
 
 	if f and UnitExists(unitid) then
+		DEFAULT_CHAT_FRAME:AddMessage("UNIT_MAIN调用: unit="..tostring(unitid).." 血量="..tostring(UnitHealth(unitid)).."/"..tostring(UnitHealthMax(unitid)).." 在线="..tostring(UnitIsConnected(unitid)))
 		local name = UnitName(unitid)
 		local _,class = UnitClass(unitid)
 		local powertype = UnitPowerType(unitid)
@@ -867,6 +867,14 @@ end
 
 -- 修改ClickHandle函数，集成到标准UnitPopup菜单
 function NotGrid:ClickHandle(button)
+    local unit = this and this.unit
+    if not unit or not UnitExists(unit) then
+        -- 点到的格子没有对应的实际单位(比如空的团队/小队槽位)，
+        -- 之前这里不做检查直接 TargetUnit()/开菜单，在这个私服客户端上
+        -- 对一个不存在的unit操作会直接把整个游戏搞崩，所以先挡住
+        return
+    end
+
     -- 如果正在施法目标，右键松开取消
     if button == "RightButton" and SpellIsTargeting() then
         SpellStopTargeting()
@@ -875,13 +883,12 @@ function NotGrid:ClickHandle(button)
 
     -- 左键松开：选中单位
     if button == "LeftButton" then
-        TargetUnit(this.unit)
+        TargetUnit(unit)
         return
     end
 
     -- 右键松开：打开菜单
     if button == "RightButton" then
-        local unit = this.unit
         local name = UnitName(unit)
         local menuFrame = FriendsDropDown
 
@@ -1099,35 +1106,43 @@ function NotGrid:UpdateLeaderIcon()
     if raidCount > 0 then
         for i=1, raidCount do
             local name, rank = GetRaidRosterInfo(i)
-            local f = getglobal("NotGridContainerraid"..i.."leader")
-            if rank == 2 then
-                f:Show()
-            else
-                f:Hide()
+            local uf = self.UnitFrames["raid"..i]
+            if uf and uf.leader then
+                if rank == 2 then
+                    uf.leader:Show()
+                else
+                    uf.leader:Hide()
+                end
             end
         end
     else
         if partyCount > 0 then
 			-- 只使用下面if中的else部分会有bug，必须配合CHAT_MSG_SYSTEM事件更新leaderUnit才行。
+			local playerFrame = self.UnitFrames["player"]
 			if leaderUnit then
-				getglobal("NotGridContainerplayerleader"):Hide()
+				if playerFrame and playerFrame.leader then playerFrame.leader:Hide() end
 				for i=1, partyCount do
-					getglobal("NotGridContainerparty"..i.."leader"):Hide()
+					local uf = self.UnitFrames["party"..i]
+					if uf and uf.leader then uf.leader:Hide() end
 				end
-				getglobal("NotGridContainer"..leaderUnit.."leader"):Show()
+				local leaderFrame = self.UnitFrames[leaderUnit]
+				if leaderFrame and leaderFrame.leader then leaderFrame.leader:Show() end
 			else
-				local f = getglobal("NotGridContainerplayerleader")
-				if IsPartyLeader() then
-					f:Show()
-				else
-					f:Hide()
+				if playerFrame and playerFrame.leader then
+					if IsPartyLeader() then
+						playerFrame.leader:Show()
+					else
+						playerFrame.leader:Hide()
+					end
 				end
 				for i=1, partyCount do
-					f = getglobal("NotGridContainerparty"..i.."leader")
-					if UnitIsPartyLeader("Party"..i) then
-						f:Show()
-					else
-						f:Hide()
+					local uf = self.UnitFrames["party"..i]
+					if uf and uf.leader then
+						if UnitIsPartyLeader("Party"..i) then
+							uf.leader:Show()
+						else
+							uf.leader:Hide()
+						end
 					end
 				end
 			end
